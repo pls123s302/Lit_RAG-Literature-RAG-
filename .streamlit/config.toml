@@ -1,0 +1,3 @@
+[server]
+# 关闭源码监视器：避免扫描 transformers 惰性模块时刷 ModuleNotFoundError 警告
+fileWatcherType = "none"

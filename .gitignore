@@ -1,0 +1,17 @@
+# 密钥与环境（绝对不能上传）
+.env
+
+# 数据目录：文献原文、索引、缓存、测评报告（含版权论文PDF，按需自行取舍）
+data/
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# IDE
+.idea/
+.vscode/
+
+# Streamlit
+.streamlit/secrets.toml
