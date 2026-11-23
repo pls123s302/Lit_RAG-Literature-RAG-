@@ -48,7 +48,7 @@ GENERATE_THINKING = os.getenv("GENERATE_THINKING", "0") == "1"
 INDEX_REFERENCES = os.getenv("INDEX_REFERENCES", "0") == "1"
 
 # UI 构建号：改了 ui/ 下的代码时递增，界面侧边栏会显示，用于确认"重启后的进程跑的是新代码"
-UI_BUILD = "2026-11-16.5"
+UI_BUILD = "2026-11-23.8"
 
 # ---- 路径 ----
 DATA_DIR = BASE_DIR / "data"

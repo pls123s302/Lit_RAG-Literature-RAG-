@@ -1,4 +1,5 @@
-"""问答页：对话 + 引用来源 + 执行轨迹 + 流式生成 + LaTeX 公式渲染。"""
+"""文献问答页：欢迎页 + 流式生成 + 引用卡片 + LaTeX 公式渲染。"""
+import html
 import re
 
 import streamlit as st
@@ -14,9 +15,18 @@ st.title("📚 文献问答")
 if "history" not in st.session_state:
     st.session_state.history = []
 
+EXAMPLES = [
+    "AKT 的核心创新点有哪些？",
+    "注意力权重的衰减公式具体是什么？",
+    "AKT 相比 DKT baseline 提升了多少？",
+    "各篇论文分别解决了知识追踪的什么问题？",
+    "csKT 是怎么解决冷启动问题的？",
+    "DiffuQKT 的实验结果在哪些数据集上验证？",
+]
+
 
 def render_rich(text: str):
-    """渲染含 LaTeX 公式的回答：$$...$$ 独立公式块走 st.latex，其余走 markdown（KaTeX 行内公式）。"""
+    """渲染含 LaTeX 公式的回答：$$...$$ 独立公式块走 st.latex，其余走 markdown。"""
     for part in re.split(r"(\$\$.+?\$\$)", text, flags=re.S):
         part = part.strip()
         if not part:
@@ -27,17 +37,32 @@ def render_rich(text: str):
             st.markdown(part)
 
 
+def render_citations(sources: list):
+    """引用来源渲染为卡片。"""
+    if not sources:
+        return
+    cards = []
+    for s in sources:
+        loc = html.escape(str(s.get("location", "")))
+        src = html.escape(str(s.get("source", "")))
+        snippet = html.escape(str(s.get("snippet", "")))
+        cards.append(
+            f'<div class="cite-card"><b>[{s["id"]}]</b> {src}'
+            f'<span class="cite-loc">· {loc}</span>'
+            f"<blockquote>{snippet}…</blockquote></div>")
+    with st.expander(f"📎 引用来源（{len(sources)}）"):
+        st.markdown("".join(cards), unsafe_allow_html=True)
+
+
 def render_attachments(msg: dict):
     if msg.get("sources"):
-        with st.expander(f"📎 引用来源（{len(msg['sources'])}）"):
-            for s in msg["sources"]:
-                st.markdown(f"**[来源{s['id']}]** 《{s['source']}》 {s['location']}\n\n> {s['snippet']}")
+        render_citations(msg["sources"])
     if msg.get("trace"):
         with st.expander("🔍 执行轨迹"):
             st.markdown(" → ".join(msg["trace"]) + f" ⏱ {msg.get('latency_ms', 0)}ms")
 
 
-# 检索参数侧边栏
+# 侧边栏
 with st.sidebar:
     st.subheader("检索设置")
     config.RERANK_TOP_K = st.slider("送入生成的证据块数", 1, 10, config.RERANK_TOP_K)
@@ -48,12 +73,22 @@ with st.sidebar:
         st.toast("缓存已清空")
     st.caption(f"build {config.UI_BUILD}")
 
-for msg in st.session_state.history:
-    with st.chat_message(msg["role"]):
-        render_rich(msg["content"])
-        render_attachments(msg)
+# 欢迎页（无对话历史时展示示例问题，点击即问）
+if not st.session_state.history:
+    st.markdown('<div class="hero-title">📚 LitRAG 科研文献管理助手</div>', unsafe_allow_html=True)
+    st.markdown('<div class="hero-sub">基于文献库的 5 篇知识追踪论文 · 支持公式 LaTeX 渲染 · 答案全程标注引用来源'
+                '</div>', unsafe_allow_html=True)
+    c1, c2 = st.columns(2, gap="small")
+    for i, ex in enumerate(EXAMPLES):
+        with (c1 if i % 2 == 0 else c2):
+            if st.button(f"💬 {ex}", key=f"ex_{i}", use_container_width=True):
+                st.session_state.pending_q = ex
+                st.rerun()
 
-question = st.chat_input("向文献库提问，如：AKT 的注意力机制是怎么设计的？…")
+question = st.chat_input("向文献库提问，或点击上方示例问题…")
+if not question and st.session_state.get("pending_q"):
+    question = st.session_state.pop("pending_q")
+
 if question:
     st.session_state.history.append({"role": "user", "content": question})
     with st.chat_message("user"):
@@ -67,16 +102,15 @@ if question:
             buf = []
             for token in ask_stream(question):
                 buf.append(token)
-                ph.markdown("".join(buf))  # 实时流式渲染
+                ph.markdown("".join(buf))
             result = st.session_state.pop("_rag_final", {})
-            streamed = "".join(buf)
         else:
             from src.evaluation.runner import run_without_cache
             result = run_without_cache(question)
             streamed = ""
         status.update(label=f"完成 ⏱ {result.get('latency_ms', 0)}ms", state="complete", expanded=False)
 
-        # 清掉流式占位，只保留 render_rich 的最终排版（公式块居中渲染，且不会重复显示）
+        # 清掉流式占位后统一用 render_rich 重渲染（公式排版正确，且避免内容重复）
         answer = result.get("answer") or streamed
         ph.empty()
         render_rich(answer)
